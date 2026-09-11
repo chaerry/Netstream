@@ -50,7 +50,16 @@ A modern, production-grade **Telecom Operations Support System (OSS) & Network I
 - **Cable Strand Matrix**: Interactive core strand matrix modal showing strand states (Available, Connected, Reserved, Damaged), attenuation (dB), and splices.
 - **Endpoint Tracing**: Dynamic tracking of A-End and Z-End terminations across ODFs, patch panels, and optical closures.
 
-### 3. IP Address Management (IPAM)
+### 3. Leased Line Management (VC4 S2C Model)
+- **360° Circuit Register**: Symmetrical, dedicated circuits across **Inbound (Off-Net / Rented Tails)** and **Outbound (On-Net / Retail & Wholesale Enterprise Lines)** with default currency standard in **USD ($)**.
+- **Multi-Technology Spectrum**: Native support for EPL (Ethernet Private Line), EVPL, DIA (Dedicated Internet Access), Dark Fiber pairs, and 100G+ DWDM Lambda wavelengths.
+- **Physical & Logical Resource Mapping**: End-to-end circuit hop visualizer connecting origin POP/rack/SFP port ➔ optical fiber strands ➔ logical VNE/VRF overlays ➔ destination port/POP.
+- **Commercial Contract & Carrier Directory**: Centralized management of carrier MSAs, Service Orders, renewal notice periods, and monthly OpEx commitments.
+- **Automated 3-Way Invoice Reconciliation**: Mathematical audit comparing vendor billed MRC against contracted rates minus SLA downtime penalty credits, flagging overbilling and charges for cancelled circuits.
+- **OpEx Capacity & Decommissioning Engine**: Continuous background analysis identifying dormant/idle circuits with &lt;1% traffic or 0 active subscriber services, with direct 1-click dispatch to **Gaharu_BPMN_NGIN** for carrier cancellation.
+- **SLA Availability & Rebate Calculator**: Uptime compliance tracking (99.999% Platinum, 99.99% Gold) with automated pro-rata and multiplier penalty rebate calculations for MTTR breaches.
+
+### 4. IP Address Management (IPAM)
 - **Hierarchical Subnet Tree**: Unified IPv4 and IPv6 supernet-to-subnet allocation trees.
 - **Subnet Calculator**: Real-time computation of network IDs, broadcast addresses, usable ranges, wildcard masks, and CIDR prefixes.
 - **IP Address Register**: Status tracking for Allocated, Static, Reserved, DHCP, and Available IPs with customer and device associations.
@@ -58,14 +67,14 @@ A modern, production-grade **Telecom Operations Support System (OSS) & Network I
 - **Live Network Discovery**: ARP/ICMP ping sweeps to detect active hosts, latency, and rogue uncataloged addresses.
 - **Batch IP Bulkloader**: High-speed CSV and formatted text importer with instant syntax validation.
 
-### 4. Telephone Number Management
+### 5. Telephone Number Management
 - **PSTN & DID/DDI Catalog**: Hierarchical management of country codes, area codes, prefixes, and allocated number blocks.
 - **E.164 Number Range Visualizer**: Matrix grid for inspecting active, reserved, quarantined, and ported telephone numbers.
 - **Local & Mobile Number Portability (LNP/MNP)**: Port-in and Port-out inter-carrier migration workflows with authorization tracking.
 - **IMS & Softswitch Auto-Discovery**: Live SIP trunk and registration reconciliation against IMS core softswitches.
 - **Regulatory Compliance**: Automated number cooling-off timers, aging quarantine periods, and conservation enforcement.
 
-### 5. GIS & Telecom Spatial Map Management
+### 6. GIS & Telecom Spatial Map Management
 - **Interactive Map Engine**: High-performance geospatial visualization powered by Leaflet and MarkerCluster.
 - **Multi-Corridor Management**: Pre-configured corridors (Trans-Java Backbone, Jakarta Metro, Bandung Aggregation, Surabaya Metro) plus an interactive **Corridor Manager** to define custom domestic or international regional corridors.
 - **Spatial Cable & POP Rendering**: Color-coded cable classification (Trunk, Feeder, Distribution), clickable node inspectors, and strand drawers.
@@ -86,13 +95,14 @@ Netstream/
 │   │   └── db/
 │   │       ├── schema.sql               # Core inventory DDL (Devices, Cables, Services)
 │   │       ├── ipam_and_telephony_schema.sql # IPAM & Telephone DDL
+│   │       ├── leased_line_schema.sql   # Leased Line DDL (Contracts, Circuits, Invoices, SLA, Gaharu BPMN)
 │   │       ├── seed.sql                 # Topology & device seed data
 │   │       └── seed_devices.py          # Synthetic device generation script
 │   └── src/main/java/id/co/netstream/inventory/
-│       ├── domain/                      # JPA Entities & Enums
+│       ├── domain/                      # JPA Entities & Enums (LeasedLine, Device, Cable, IPAM)
 │       ├── repository/                  # Panache Repositories
 │       ├── dto/                         # Typed DTO Records
-│       ├── service/                     # Business Logic (Inventory, IPAM, GIS, Planning)
+│       ├── service/                     # Business Logic (LeasedLine, Inventory, IPAM, GIS, Planning)
 │       ├── controller/                  # REST Controllers with RBAC (@RolesAllowed)
 │       └── exception/                   # Global RFC-7807 Exception Handlers
 │
@@ -103,20 +113,22 @@ Netstream/
 │   ├── .env.example                     # Masked frontend environment template
 │   └── src/
 │       ├── auth/                        # Keycloak-js OIDC provider & auth guards
-│       ├── api/                         # Axios client with live & mock fallbacks
+│       ├── api/                         # Axios client with live & mock fallbacks (leasedLineApi, etc.)
 │       ├── components/
 │       │   ├── common/                  # Modals, badges, futuristic dialogs, snail logo
 │       │   ├── layout/                  # Cyber NOC AppLayout, Sidebar, Header
 │       │   ├── inventory/               # 42U Rack elevation, hop visualizer, strand matrix
+│       │   ├── leasedline/              # Leased line register, resource map, contracts, invoice audit, SLA
 │       │   ├── ipam/                    # Subnet calculator, IP register, bulkloader, VRFs
 │       │   ├── telephony/               # Number blocks, range matrix, porting, IMS sync
 │       │   └── gis/                     # Leaflet map, corridor manager, OTDR fault locator
-│       ├── pages/                       # Module pages (Inventory, IPAM, Telephony, GIS)
-│       └── types/                       # Shared TypeScript domain models
+│       ├── pages/                       # Module pages (Inventory, LeasedLine, IPAM, Telephony, GIS)
+│       └── types/                       # Shared TypeScript domain models (leasedLine.ts, etc.)
 │
 ├── config/
 │   └── application.properties.example   # Masked system configuration template
 ├── documents/                           # Technical architecture & functional specifications
+│   ├── leased_line_module_guide.md      # Comprehensive Leased Line Architecture & Gaharu BPMN Guide
 │   ├── gis_module_telecom_spatial_management.md
 │   ├── optical_cable_and_core_infrastructure_management.md
 │   ├── ip_management_and_telephone_number_modules.md
@@ -162,6 +174,7 @@ Execute the schema and seed scripts against your target PostgreSQL database:
 ```bash
 psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/schema.sql
 psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/ipam_and_telephony_schema.sql
+psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/leased_line_schema.sql
 psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/seed.sql
 ```
 
@@ -201,6 +214,7 @@ The platform enforces strict role-based access across all endpoints:
 ## Technical Documentation
 
 Detailed functional guides and architecture deep-dives are available in the [`documents/`](file:///Users/chaerry/Development/antigravity/Netstream/documents) directory:
+- [Leased Line Management Module Guide (VC4 S2C Model & Gaharu BPMN)](file:///Users/chaerry/Development/antigravity/Netstream/documents/leased_line_module_guide.md)
 - [GIS Module Telecom Spatial Management](file:///Users/chaerry/Development/antigravity/Netstream/documents/gis_module_telecom_spatial_management.md)
 - [Optical Cable & Core Infrastructure Management](file:///Users/chaerry/Development/antigravity/Netstream/documents/optical_cable_and_core_infrastructure_management.md)
 - [IP Management & Telephone Number Modules](file:///Users/chaerry/Development/antigravity/Netstream/documents/ip_management_and_telephone_number_modules.md)

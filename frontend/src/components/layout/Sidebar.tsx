@@ -22,7 +22,9 @@ import {
   PanelLeftOpen,
   Boxes,
   Radar,
-  FileSpreadsheet
+  FileSpreadsheet,
+  TrendingDown,
+  ShieldCheck
 } from 'lucide-react';
 
 interface SubMenu {
@@ -59,6 +61,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isInventoryRoute = location.pathname.startsWith('/inventory');
   const isIpamRoute = location.pathname.startsWith('/ipam');
   const currentIpamTab = new URLSearchParams(location.search).get('tab') || 'subnets';
+  const isLeasedLineRoute = location.pathname.startsWith('/leased-line');
+  const currentLeasedLineTab = new URLSearchParams(location.search).get('tab') || 'circuits';
 
   const menuItems: MenuItem[] = [
     {
@@ -88,10 +92,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'leased-line',
       name: 'Leased Line Module',
-      path: '/placeholder/leased-line',
+      path: '/leased-line',
       icon: <GitBranch className="w-5 h-5 text-purple-400" />,
-      isImplemented: false,
-      badge: 'Placeholder',
+      isImplemented: true,
+      badge: 'PROD',
+      subMenus: [
+        { id: 'll-circuits', name: 'Circuit Register (360°)', tabKey: 'circuits', icon: <GitBranch className="w-4 h-4" /> },
+        { id: 'll-topology', name: 'Resource Mapping', tabKey: 'topology', icon: <Layers className="w-4 h-4" /> },
+        { id: 'll-contracts', name: 'Carriers & Contracts', tabKey: 'contracts', icon: <Building2 className="w-4 h-4" /> },
+        { id: 'll-invoices', name: 'Invoice Audit (3-Way)', tabKey: 'invoices', icon: <FileSpreadsheet className="w-4 h-4" /> },
+        { id: 'll-capacity', name: 'Capacity & OpEx Saver', tabKey: 'capacity', icon: <TrendingDown className="w-4 h-4" /> },
+        { id: 'll-sla', name: 'SLA & Penalties', tabKey: 'sla', icon: <ShieldCheck className="w-4 h-4" /> },
+      ]
     },
     {
       id: 'ipam',
@@ -226,7 +238,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         )}
                         {item.subMenus && (
                           <ChevronDown
-                            className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${(item.id === 'inventory' && isInventoryRoute) || (item.id === 'ipam' && isIpamRoute) ? 'rotate-180' : ''
+                            className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${(item.id === 'inventory' && isInventoryRoute) || (item.id === 'ipam' && isIpamRoute) || (item.id === 'leased-line' && isLeasedLineRoute) ? 'rotate-180' : ''
                               }`}
                           />
                         )}
@@ -290,6 +302,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               }`}
                           >
                             <span className={`shrink-0 ${isSubActive ? 'text-amber-400' : 'text-slate-500'}`}>
+                              {sub.icon}
+                            </span>
+                            <span className="truncate">{sub.name}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Sub-menu items for Leased Line Module */}
+                  {item.id === 'leased-line' && isLeasedLineRoute && item.subMenus && !isCollapsed && (
+                    <div className="pl-3 pr-1 py-1 space-y-0.5 border-l border-slate-800/80 ml-5 my-1">
+                      {item.subMenus.map((sub) => {
+                        const isSubActive = currentLeasedLineTab === sub.tabKey;
+                        return (
+                          <Link
+                            key={sub.id}
+                            to={`/leased-line?tab=${sub.tabKey}`}
+                            className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isSubActive
+                              ? 'bg-purple-500/15 text-purple-300 font-semibold shadow-sm border border-purple-500/20'
+                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                              }`}
+                          >
+                            <span className={`shrink-0 ${isSubActive ? 'text-purple-400' : 'text-slate-500'}`}>
                               {sub.icon}
                             </span>
                             <span className="truncate">{sub.name}</span>
