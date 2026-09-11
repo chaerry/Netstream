@@ -1,0 +1,31 @@
+# Datasource Configuration
+quarkus.datasource.db-kind=postgresql
+quarkus.datasource.username=<username>
+quarkus.datasource.password=<password>
+quarkus.datasource.jdbc.url=<url>
+quarkus.datasource.devservices=false
+
+# Change from 'update' to 'validate' or 'none'
+quarkus.hibernate-orm.database.generation=validate
+quarkus.hibernate-orm.log.sql=true
+
+# HTTP Configuration
+quarkus.http.port=8071
+
+# Swagger UI & OpenAPI Configuration
+quarkus.swagger-ui.always-include=true
+quarkus.swagger-ui.path=/swagger-ui
+
+# Keycloak OIDC Authentication Configuration
+quarkus.oidc.auth-server-url=https://keycloak.aitiserve.co.id:8095/realms/aitiserve
+quarkus.oidc.client-id=<client-id>
+quarkus.oidc.credentials.secret=<secret>
+quarkus.oidc.application-type=service
+
+# CORS configurations
+quarkus.http.cors=true
+quarkus.http.cors.origins=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://145.79.8.141,http://localhost:8070,/.*/
+quarkus.http.cors.methods=GET,PUT,POST,DELETE,OPTIONS,PATCH,HEAD
+quarkus.http.cors.headers=*
+quarkus.http.cors.access-control-allow-credentials=true
+quarkus.http.cors.access-control-max-age=24H

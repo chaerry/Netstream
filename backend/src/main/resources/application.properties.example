@@ -1,0 +1,63 @@
+# ==============================================================================
+# NETSTREAM TELECOM INVENTORY SERVICE - QUARKUS CONFIGURATION
+# ==============================================================================
+
+# HTTP Server Configuration
+quarkus.http.port=8070
+quarkus.http.host=0.0.0.0
+quarkus.http.root-path=/
+
+# Datasource Configuration (PostgreSQL Target)
+quarkus.datasource.db-kind=postgresql
+quarkus.datasource.username=<username>
+quarkus.datasource.password=<password>
+quarkus.datasource.jdbc.url=<url>
+quarkus.datasource.devservices=false
+quarkus.datasource.jdbc.max-size=30
+quarkus.datasource.jdbc.min-size=5
+quarkus.datasource.jdbc.acquisition-timeout=10
+
+# Hibernate ORM Configuration
+quarkus.hibernate-orm.default-schema=inventory
+quarkus.hibernate-orm.database.generation=validate
+quarkus.hibernate-orm.log.sql=true
+quarkus.hibernate-orm.jdbc.statement-batch-size=50
+
+# OpenAPI & Swagger UI
+quarkus.smallrye-openapi.path=/openapi
+quarkus.swagger-ui.always-include=true
+quarkus.swagger-ui.path=/swagger-ui
+
+# Keycloak OIDC Authentication Configuration
+quarkus.oidc.auth-server-url=https://keycloak.aitiserve.co.id:8095/realms/aitiserve
+quarkus.oidc.client-id=<client-id>
+quarkus.oidc.credentials.secret=<secret>
+quarkus.oidc.application-type=service
+quarkus.oidc.tls.verification=required
+quarkus.oidc.roles.role-claim-path="resource_access.itsm_gaharu.roles,realm_access.roles"
+
+# Dev Mode: Allow open access for local UI testing and development
+%dev.quarkus.oidc.tenant-enabled=false
+%dev.quarkus.http.auth.permission.permit-dev.paths=/*
+%dev.quarkus.http.auth.permission.permit-dev.policy=permit
+
+# Security & Public Paths
+quarkus.http.auth.permission.permit1.paths=/api/v1/auth/*,/openapi,/swagger-ui/*,/q/*
+quarkus.http.auth.permission.permit1.policy=permit
+
+# CORS Configuration
+quarkus.http.cors=true
+quarkus.http.cors.origins=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://145.79.8.141,http://localhost:8070,/.*/
+quarkus.http.cors.methods=GET,PUT,POST,DELETE,OPTIONS,PATCH,HEAD
+quarkus.http.cors.headers=*
+quarkus.http.cors.access-control-allow-credentials=true
+quarkus.http.cors.access-control-max-age=24H
+
+# Logging
+quarkus.log.level=INFO
+quarkus.log.category."id.co.netstream".level=DEBUG
+
+# Graceful Shutdown Configuration
+# Allows in-flight HTTP requests and active transactions up to 30s to finish processing.
+# New incoming connections are rejected during the shutdown sequence.
+quarkus.shutdown.timeout=30s
