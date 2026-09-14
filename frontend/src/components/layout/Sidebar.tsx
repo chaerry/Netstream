@@ -24,7 +24,8 @@ import {
   Radar,
   FileSpreadsheet,
   TrendingDown,
-  ShieldCheck
+  ShieldCheck,
+  History
 } from 'lucide-react';
 
 interface SubMenu {
@@ -63,6 +64,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const currentIpamTab = new URLSearchParams(location.search).get('tab') || 'subnets';
   const isLeasedLineRoute = location.pathname.startsWith('/leased-line');
   const currentLeasedLineTab = new URLSearchParams(location.search).get('tab') || 'circuits';
+  const isIntegrationRoute = location.pathname.startsWith('/integration');
+  const currentIntegrationTab = new URLSearchParams(location.search).get('tab') || 'connectors';
 
   const menuItems: MenuItem[] = [
     {
@@ -131,10 +134,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'integration',
       name: 'Integration Module',
-      path: '/placeholder/integration',
+      path: '/integration',
       icon: <Layers className="w-5 h-5 text-blue-400" />,
-      isImplemented: false,
-      badge: 'Placeholder',
+      isImplemented: true,
+      badge: 'PROD',
+      subMenus: [
+        { id: 'int-connectors', name: 'EMS/NMS Connectors', tabKey: 'connectors', icon: <Radio className="w-4 h-4" /> },
+        { id: 'int-reconciliation', name: 'Reconciliation Center', tabKey: 'reconciliation', icon: <GitBranch className="w-4 h-4" /> },
+        { id: 'int-audit', name: 'Change Tracking (CDC)', tabKey: 'audit', icon: <History className="w-4 h-4" /> },
+        { id: 'int-alarms', name: 'Enriched Alarms', tabKey: 'alarms', icon: <AlertTriangle className="w-4 h-4" /> },
+        { id: 'int-webhooks', name: 'Northbound APIs & Webhooks', tabKey: 'webhooks', icon: <Boxes className="w-4 h-4" /> },
+        { id: 'int-bpmn', name: 'Gaharu BPMN Bridge', tabKey: 'bpmn', icon: <Route className="w-4 h-4" /> },
+      ]
     },
     {
       id: 'reporting',
@@ -326,6 +337,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               }`}
                           >
                             <span className={`shrink-0 ${isSubActive ? 'text-purple-400' : 'text-slate-500'}`}>
+                              {sub.icon}
+                            </span>
+                            <span className="truncate">{sub.name}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Sub-menu items for Integration Module */}
+                  {item.id === 'integration' && isIntegrationRoute && item.subMenus && !isCollapsed && (
+                    <div className="pl-3 pr-1 py-1 space-y-0.5 border-l border-slate-800/80 ml-5 my-1">
+                      {item.subMenus.map((sub) => {
+                        const isSubActive = currentIntegrationTab === sub.tabKey;
+                        return (
+                          <Link
+                            key={sub.id}
+                            to={`/integration?tab=${sub.tabKey}`}
+                            className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isSubActive
+                              ? 'bg-blue-500/15 text-blue-300 font-semibold shadow-sm border border-blue-500/20'
+                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                              }`}
+                          >
+                            <span className={`shrink-0 ${isSubActive ? 'text-blue-400' : 'text-slate-500'}`}>
                               {sub.icon}
                             </span>
                             <span className="truncate">{sub.name}</span>

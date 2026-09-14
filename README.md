@@ -82,6 +82,14 @@ A modern, production-grade **Telecom Operations Support System (OSS) & Network I
 - **Spatial Bill of Materials (BOM) Planner**: Instant calculation of required cable lengths, slack loops, splice enclosures, and patch cords based on map coordinates.
 - **Omnisearch Auto-complete**: Quick-jump search indexing cables, POPs, splices, and manholes across the active map view.
 
+### 7. Integration & Automation Engine (Multi-Vendor NMS/EMS & Northbound APIs)
+- **Southbound Mediation Hub**: High-speed connector abstraction supporting Huawei iMaster NCE, Cisco EPN-M/DNA-C, Nokia NSP, ZTE ZENIC ONE, and Generic SNMPv3.
+- **Automated 3-Way Reconciliation**: Continuous diff detection comparing Live Discovered Network State against the Netstream SSoT Inventory with 1-click sync, rogue asset flagging, or BPMN dispatch.
+- **Universal Change Data Capture (CDC)**: Immutable chronological audit ledger recording every configuration modification with JSON before/after snapshots.
+- **Telecom-Enriched Alarms**: Real-time alarm stream enriched with physical device, 42U rack, optical cable strand, leased line circuit, impacted corporate customers, and revenue risk.
+- **Northbound TM Forum Open APIs**: Standards-aligned REST implementations for **TMF638** (Service Inventory), **TMF639** (Resource Inventory), and **TMF642** (Alarm Management).
+- **Gaharu_BPMN_NGIN Bridge**: Direct workflow dispatch for field optical inspections, trouble ticketing, and automated service provisioning.
+
 ---
 
 ## Directory Structure
@@ -96,15 +104,18 @@ Netstream/
 │   │       ├── schema.sql               # Core inventory DDL (Devices, Cables, Services)
 │   │       ├── ipam_and_telephony_schema.sql # IPAM & Telephone DDL
 │   │       ├── leased_line_schema.sql   # Leased Line DDL (Contracts, Circuits, Invoices, SLA, Gaharu BPMN)
+│   │       ├── integration_schema.sql   # Integration DDL (Connectors, Reconciliation, CDC, Alarms, Webhooks)
 │   │       ├── seed.sql                 # Topology & device seed data
 │   │       └── seed_devices.py          # Synthetic device generation script
-│   └── src/main/java/id/co/netstream/inventory/
-│       ├── domain/                      # JPA Entities & Enums (LeasedLine, Device, Cable, IPAM)
-│       ├── repository/                  # Panache Repositories
-│       ├── dto/                         # Typed DTO Records
-│       ├── service/                     # Business Logic (LeasedLine, Inventory, IPAM, GIS, Planning)
-│       ├── controller/                  # REST Controllers with RBAC (@RolesAllowed)
-│       └── exception/                   # Global RFC-7807 Exception Handlers
+│   └── src/main/java/id/co/netstream/
+│       ├── inventory/                   # Core Inventory Domain (Devices, Ports, Racks, Cables, Circuits)
+│       └── integration/                 # Option A Schema-Isolated Integration Engine
+│           ├── controller/              # IntegrationResource, TmfOpenApiResource
+│           ├── domain/                  # Entities & Enums in integration schema
+│           ├── dto/                     # IntegrationDTOs (Connectors, Diff, Alarms, TMF)
+│           ├── facade/                  # InventoryFacade (In-Memory Enrichment & SSoT Sync)
+│           ├── repository/              # Panache Repositories
+│           └── service/                 # IntegrationService (Reconciliation, CDC, Webhooks)
 │
 ├── frontend/                            # Modern Vite + React 18 + TypeScript SPA
 │   ├── package.json
@@ -113,21 +124,23 @@ Netstream/
 │   ├── .env.example                     # Masked frontend environment template
 │   └── src/
 │       ├── auth/                        # Keycloak-js OIDC provider & auth guards
-│       ├── api/                         # Axios client with live & mock fallbacks (leasedLineApi, etc.)
+│       ├── api/                         # Axios client (integrationApi, leasedLineApi, etc.)
 │       ├── components/
 │       │   ├── common/                  # Modals, badges, futuristic dialogs, snail logo
 │       │   ├── layout/                  # Cyber NOC AppLayout, Sidebar, Header
 │       │   ├── inventory/               # 42U Rack elevation, hop visualizer, strand matrix
 │       │   ├── leasedline/              # Leased line register, resource map, contracts, invoice audit, SLA
+│       │   ├── integration/             # Connector hub, reconciliation diff, audit logs, alarm matrix, webhooks
 │       │   ├── ipam/                    # Subnet calculator, IP register, bulkloader, VRFs
 │       │   ├── telephony/               # Number blocks, range matrix, porting, IMS sync
 │       │   └── gis/                     # Leaflet map, corridor manager, OTDR fault locator
-│       ├── pages/                       # Module pages (Inventory, LeasedLine, IPAM, Telephony, GIS)
-│       └── types/                       # Shared TypeScript domain models (leasedLine.ts, etc.)
+│       ├── pages/                       # Module pages (Inventory, LeasedLine, Integration, IPAM, Telephony, GIS)
+│       └── types/                       # Shared TypeScript domain models (integration.ts, leasedLine.ts, etc.)
 │
 ├── config/
 │   └── application.properties.example   # Masked system configuration template
 ├── documents/                           # Technical architecture & functional specifications
+│   ├── integration_module_guide.md      # Comprehensive Integration Engine, TMF APIs & Gaharu BPMN Guide
 │   ├── leased_line_module_guide.md      # Comprehensive Leased Line Architecture & Gaharu BPMN Guide
 │   ├── gis_module_telecom_spatial_management.md
 │   ├── optical_cable_and_core_infrastructure_management.md
@@ -175,6 +188,7 @@ Execute the schema and seed scripts against your target PostgreSQL database:
 psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/schema.sql
 psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/ipam_and_telephony_schema.sql
 psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/leased_line_schema.sql
+psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/integration_schema.sql
 psql -h <db-host> -p 5432 -U <db-user> -d netstream -f backend/src/main/resources/db/seed.sql
 ```
 
@@ -214,6 +228,7 @@ The platform enforces strict role-based access across all endpoints:
 ## Technical Documentation
 
 Detailed functional guides and architecture deep-dives are available in the [`documents/`](file:///Users/chaerry/Development/antigravity/Netstream/documents) directory:
+- [Integration & Automation Engine Technical Guide (VC4 S2C Model & Gaharu BPMN)](file:///Users/chaerry/Development/antigravity/Netstream/documents/integration_module_guide.md)
 - [Leased Line Management Module Guide (VC4 S2C Model & Gaharu BPMN)](file:///Users/chaerry/Development/antigravity/Netstream/documents/leased_line_module_guide.md)
 - [GIS Module Telecom Spatial Management](file:///Users/chaerry/Development/antigravity/Netstream/documents/gis_module_telecom_spatial_management.md)
 - [Optical Cable & Core Infrastructure Management](file:///Users/chaerry/Development/antigravity/Netstream/documents/optical_cable_and_core_infrastructure_management.md)

@@ -8,6 +8,7 @@ import { GisModulePage } from './pages/GisModulePage';
 import { IpManagementPage } from './pages/IpManagementPage';
 import { TelephoneNumberPage } from './pages/TelephoneNumberPage';
 import { LeasedLinePage } from './pages/LeasedLinePage';
+import { IntegrationModulePage } from './pages/IntegrationModulePage';
 import { PlaceholderModulePage } from './pages/PlaceholderModulePage';
 import { LoginPage } from './pages/LoginPage';
 
@@ -28,6 +29,7 @@ const AppRoutes: React.FC = () => {
           <Route path="leased-line" element={<LeasedLinePage />} />
           <Route path="ipam" element={<IpManagementPage />} />
           <Route path="telephony" element={<TelephoneNumberPage />} />
+          <Route path="integration" element={<IntegrationModulePage />} />
           <Route path="placeholder/:moduleId" element={<PlaceholderModulePage />} />
           <Route path="*" element={<Navigate to="/inventory" replace />} />
         </Route>
