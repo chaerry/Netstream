@@ -5,7 +5,7 @@ import { inventoryApi } from '../../api/inventoryApi';
 import { useAuth } from '../../auth/AuthContext';
 import { AllocatePortModal } from './AllocatePortModal';
 import { ConfirmDeleteModal } from '../common/ConfirmDeleteModal';
-import { Activity, Plus, Network, Cpu, CheckCircle2, XCircle, Loader2, Link2, Unlink, ExternalLink, ShieldAlert } from 'lucide-react';
+import { Activity, Plus, Network, Cpu, CheckCircle2, XCircle, Loader2, Link2, Unlink, ExternalLink, ShieldAlert, Search, Filter, X, Zap, Layers } from 'lucide-react';
 
 interface PortInspectorModalProps {
   device: NetworkDevice | null;
@@ -32,6 +32,12 @@ export const PortInspectorModal: React.FC<PortInspectorModalProps> = ({
   const [releasingPort, setReleasingPort] = useState<DevicePort | null>(null);
   const [releasingPortId, setReleasingPortId] = useState<string | null>(null);
   const [addPortError, setAddPortError] = useState<string | null>(null);
+
+  // Search & Filter State
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ALLOCATED' | 'FREE' | 'LOGICAL' | 'PHYSICAL'>('ALL');
+  const [speedFilter, setSpeedFilter] = useState<string>('ALL');
+  const [operStatusFilter, setOperStatusFilter] = useState<'ALL' | 'UP' | 'DOWN'>('ALL');
 
   React.useEffect(() => {
     if (device) {
@@ -104,6 +110,42 @@ export const PortInspectorModal: React.FC<PortInspectorModalProps> = ({
   const chassisCapacity = device.totalPorts || ports.length || 0;
   const availableBays = Math.max(0, chassisCapacity - ports.length);
   const allocatedCount = ports.filter(p => p.isAllocated).length;
+  const logicalCount = ports.filter(p => (p.portName || '').includes('.') || (p.portName || '').toUpperCase().includes('VLAN')).length;
+  const physicalCount = ports.length - logicalCount;
+  const uniqueSpeeds = Array.from(new Set(ports.map(p => p.portSpeedMbps).filter(Boolean))).sort((a, b) => b - a);
+
+  // Filter Ports
+  const filteredPorts = ports.filter((port) => {
+    // 1. Text Search (Matches portName, allocatedServiceCode, allocatedCustomerName, resourceRole)
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+      const matchName = (port.portName || '').toLowerCase().includes(q);
+      const matchSvc = (port.allocatedServiceCode || '').toLowerCase().includes(q);
+      const matchCust = (port.allocatedCustomerName || '').toLowerCase().includes(q);
+      const matchRole = (port.allocatedResourceRole || '').toLowerCase().includes(q);
+      if (!matchName && !matchSvc && !matchCust && !matchRole) {
+        return false;
+      }
+    }
+
+    // 2. Allocation & Type Filter
+    if (statusFilter === 'ALLOCATED' && !port.isAllocated) return false;
+    if (statusFilter === 'FREE' && port.isAllocated) return false;
+    const isLogical = (port.portName || '').includes('.') || (port.portName || '').toUpperCase().includes('VLAN');
+    if (statusFilter === 'LOGICAL' && !isLogical) return false;
+    if (statusFilter === 'PHYSICAL' && isLogical) return false;
+
+    // 3. Speed Filter
+    if (speedFilter !== 'ALL' && port.portSpeedMbps !== Number(speedFilter)) {
+      return false;
+    }
+
+    // 4. Operational Status Filter
+    if (operStatusFilter === 'UP' && !port.isOperational) return false;
+    if (operStatusFilter === 'DOWN' && port.isOperational) return false;
+
+    return true;
+  });
 
   return (
     <Modal
@@ -134,22 +176,150 @@ export const PortInspectorModal: React.FC<PortInspectorModalProps> = ({
           </div>
         </div>
 
-        {/* Actions Bar */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <Network className="w-4 h-4 text-cyan-400" />
-            <span>Active Physical & Logical Port Matrix</span>
+        {/* Search & Filter Toolbar */}
+        <div className="p-3.5 bg-slate-900/90 rounded-2xl border border-slate-800 space-y-3 shadow-lg shadow-slate-950/40">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Search Input Box */}
+            <div className="relative flex-1 min-w-[280px]">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search ports by name (e.g. 0/0/0, 253), service (SVC-BRI), customer..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="glass-input w-full pl-9 pr-8 py-1.5 text-xs rounded-xl font-mono placeholder:font-sans placeholder:text-slate-500"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white p-0.5 rounded transition-colors"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown Filters: Speed & Operational Status */}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={speedFilter}
+                onChange={(e) => setSpeedFilter(e.target.value)}
+                className="glass-input h-8 px-2.5 text-xs rounded-xl font-mono text-slate-300"
+              >
+                <option value="ALL">All Speeds</option>
+                {uniqueSpeeds.map((s) => (
+                  <option key={s} value={s}>
+                    {s >= 1000 ? `${s / 1000} Gbps` : `${s} Mbps`}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={operStatusFilter}
+                onChange={(e) => setOperStatusFilter(e.target.value as any)}
+                className="glass-input h-8 px-2.5 text-xs rounded-xl font-mono text-slate-300"
+              >
+                <option value="ALL">All States</option>
+                <option value="UP">Operational (UP)</option>
+                <option value="DOWN">Down (DOWN)</option>
+              </select>
+
+              {hasAnyRole(['inventory-admin', 'inventory-operator']) && !showAddForm && (
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600/20 border border-cyan-500/40 text-cyan-300 text-xs font-semibold rounded-xl hover:bg-cyan-600 hover:text-white transition-all whitespace-nowrap ml-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Port Interface
+                </button>
+              )}
+            </div>
           </div>
 
-          {hasAnyRole(['inventory-admin', 'inventory-operator']) && !showAddForm && (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600/20 border border-cyan-500/40 text-cyan-300 text-xs font-semibold rounded-lg hover:bg-cyan-600 hover:text-white transition-all"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Port Interface
-            </button>
-          )}
+          {/* Filter Pills & Result Summary */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                  statusFilter === 'ALL'
+                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30 font-bold'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                All ({ports.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('ALLOCATED')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                  statusFilter === 'ALLOCATED'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 font-bold'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                In Circuit ({allocatedCount})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('FREE')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                  statusFilter === 'FREE'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-bold'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                Available ({ports.length - allocatedCount})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('LOGICAL')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                  statusFilter === 'LOGICAL'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 font-bold'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                Logical / Dot1Q ({logicalCount})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('PHYSICAL')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                  statusFilter === 'PHYSICAL'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-bold'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                Physical Base ({physicalCount})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
+              <span>
+                Showing <strong className="text-white font-bold">{filteredPorts.length}</strong> of {ports.length} ports
+              </span>
+              {(searchTerm || statusFilter !== 'ALL' || speedFilter !== 'ALL' || operStatusFilter !== 'ALL') && (
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setStatusFilter('ALL');
+                    setSpeedFilter('ALL');
+                    setOperStatusFilter('ALL');
+                  }}
+                  className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-cyan-300 transition-colors"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Add Port Form */}
@@ -224,13 +394,33 @@ export const PortInspectorModal: React.FC<PortInspectorModalProps> = ({
         )}
 
         {/* Port Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
           {ports.length === 0 ? (
-            <div className="col-span-2 py-8 text-center text-slate-500 text-xs">
+            <div className="col-span-2 py-10 text-center text-slate-500 text-xs">
               No port interfaces recorded for this device yet.
             </div>
+          ) : filteredPorts.length === 0 ? (
+            <div className="col-span-2 py-12 text-center space-y-2.5 bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+              <Search className="w-8 h-8 text-slate-600 mx-auto" />
+              <p className="text-slate-300 text-xs font-semibold">No port interfaces match your filter criteria.</p>
+              <p className="text-slate-500 text-[11px] font-mono">
+                Active Filter: "{searchTerm || 'Custom Selection'}"
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setStatusFilter('ALL');
+                  setSpeedFilter('ALL');
+                  setOperStatusFilter('ALL');
+                }}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold rounded-xl transition-all"
+              >
+                Reset All Filters
+              </button>
+            </div>
           ) : (
-            ports.map((port) => {
+            filteredPorts.map((port) => {
               const isAllocatingThis = releasingPortId === port.id;
 
               return (
