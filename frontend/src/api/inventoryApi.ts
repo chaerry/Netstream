@@ -456,6 +456,17 @@ export const inventoryApi = {
     }
   },
 
+  deleteService: async (id: string): Promise<void> => {
+    try {
+      await apiClient.delete(`/api/v1/inventory/services/${id}`);
+    } catch (err: any) {
+      if (err.response) {
+        throw err;
+      }
+      localServices = localServices.filter(s => s.id !== id);
+    }
+  },
+
   // --------------------------------------------------------------------------
   // 1.7 Location & Rack Hierarchy
   // --------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import { StatusBadge } from '../common/StatusBadge';
 import { StatCard } from '../common/StatCard';
 import { ServiceHopVisualizer } from './ServiceHopVisualizer';
 import { CreateServiceModal } from './CreateServiceModal';
+import { ConfirmDeleteModal } from '../common/ConfirmDeleteModal';
 import {
   Route,
   Plus,
@@ -15,7 +16,8 @@ import {
   DollarSign,
   TrendingUp,
   ShieldCheck,
-  Power
+  Power,
+  Trash2
 } from 'lucide-react';
 
 export const ServiceInventoryView: React.FC = () => {
@@ -25,6 +27,7 @@ export const ServiceInventoryView: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [serviceToDelete, setServiceToDelete] = useState<NetworkService | null>(null);
 
   const fetchServices = async () => {
     setLoading(true);
@@ -187,13 +190,22 @@ export const ServiceInventoryView: React.FC = () => {
                     </button>
 
                     {hasAnyRole(['inventory-admin', 'inventory-operator']) && (
-                      <button
-                        onClick={() => handleToggleStatus(svc)}
-                        className="p-1 text-slate-400 hover:text-amber-400 transition-colors"
-                        title={svc.status === 'ACTIVE' ? 'Suspend Service' : 'Activate Service'}
-                      >
-                        <Power className="w-4 h-4" />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleToggleStatus(svc)}
+                          className="p-1 text-slate-400 hover:text-amber-400 transition-colors"
+                          title={svc.status === 'ACTIVE' ? 'Suspend Service' : 'Activate Service'}
+                        >
+                          <Power className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setServiceToDelete(svc)}
+                          className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                          title="Terminate & Decommission Service"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>
@@ -208,6 +220,25 @@ export const ServiceInventoryView: React.FC = () => {
         onClose={() => setShowCreateModal(false)}
         onSuccess={fetchServices}
       />
+
+      {serviceToDelete && (
+        <ConfirmDeleteModal
+          isOpen={!!serviceToDelete}
+          itemType="SERVICE"
+          itemId={serviceToDelete.id}
+          itemCode={serviceToDelete.serviceCode}
+          itemName={serviceToDelete.customerName}
+          onClose={() => setServiceToDelete(null)}
+          onConfirm={async () => {
+            await inventoryApi.deleteService(serviceToDelete.id);
+            if (selectedService?.id === serviceToDelete.id) {
+              setSelectedService(null);
+            }
+            await fetchServices();
+          }}
+          customWarningMessage={`You are about to terminate and decommission circuit ${serviceToDelete.serviceCode} for ${serviceToDelete.customerName}. All allocated bandwidth (${serviceToDelete.bandwidthMbps >= 1000 ? serviceToDelete.bandwidthMbps / 1000 + ' Gbps' : serviceToDelete.bandwidthMbps + ' Mbps'}) and port cross-connects will be released.`}
+        />
+      )}
     </div>
   );
 };
