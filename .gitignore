@@ -19,6 +19,7 @@ Thumbs.db
 *.iws
 .m2/
 .mvn/
+!.mvn/jvm.config
 *.sublime-project
 *.sublime-workspace
 .project
