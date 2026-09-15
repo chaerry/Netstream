@@ -130,12 +130,16 @@ export const inventoryApi = {
     try {
       const response = await apiClient.post('/api/v1/inventory/devices', data);
       return response.data;
-    } catch {
+    } catch (err: any) {
+      if (err.response) {
+        throw err;
+      }
+      console.info('[inventoryApi] Backend unreachable, creating in local sandbox dataset');
       const newDev: NetworkDevice = {
         id: `dev-${Date.now()}`,
-        locationId: data.locationId || 'loc-cgk-site',
+        locationId: data.locationId || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
         locationName: 'Jakarta Mega PoP Hub',
-        rackId: data.rackId || 'rack-01',
+        rackId: data.rackId || 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01',
         rackNumber: 'RACK-A01',
         hostname: data.hostname || `DEV-${Date.now()}`,
         serialNumber: data.serialNumber || `SN-${Date.now()}`,
@@ -169,7 +173,10 @@ export const inventoryApi = {
     try {
       const response = await apiClient.put(`/api/v1/inventory/devices/${id}`, updateData);
       return response.data;
-    } catch {
+    } catch (err: any) {
+      if (err.response) {
+        throw err;
+      }
       localDevices = localDevices.map(d => d.id === id ? { ...d, ...updateData, updatedAt: new Date().toISOString() } : d);
       const updated = localDevices.find(d => d.id === id);
       return updated!;
@@ -180,7 +187,10 @@ export const inventoryApi = {
     try {
       const response = await apiClient.patch(`/api/v1/inventory/devices/${id}/status`, { status, reason });
       return response.data;
-    } catch {
+    } catch (err: any) {
+      if (err.response) {
+        throw err;
+      }
       localDevices = localDevices.map(d => d.id === id ? { ...d, status: status as any, updatedAt: new Date().toISOString() } : d);
       const updated = localDevices.find(d => d.id === id);
       return updated!;
@@ -190,7 +200,10 @@ export const inventoryApi = {
   deleteDevice: async (id: string): Promise<void> => {
     try {
       await apiClient.delete(`/api/v1/inventory/devices/${id}`);
-    } catch {
+    } catch (err: any) {
+      if (err.response) {
+        throw err;
+      }
       localDevices = localDevices.filter(d => d.id !== id);
     }
   },

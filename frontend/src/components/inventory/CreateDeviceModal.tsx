@@ -22,11 +22,14 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [equipmentCategory, setEquipmentCategory] = useState<'ACTIVE' | 'PASSIVE'>('ACTIVE');
   const [deviceTypes, setDeviceTypes] = useState<DeviceTypeOption[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const defaultRack = racks && racks.length > 0 ? racks[0] : null;
+
   const [formData, setFormData] = useState({
-    locationId: 'loc-cgk-site',
-    rackId: racks.length > 0 ? racks[0].id : 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01',
+    locationId: defaultRack?.locationId || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    rackId: defaultRack ? defaultRack.id : 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01',
     hostname: '',
-    serialNumber: '',
+    serialNumber: `FOC${Math.floor(10000000 + Math.random() * 90000000)}`,
     assetTag: '',
     deviceType: 'ROUTER' as DeviceType,
     vendor: 'Cisco',
@@ -39,6 +42,23 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     totalPorts: 32,
     costUsd: 35000,
   });
+
+  // Automatically synchronize rackId & locationId when racks prop updates
+  useEffect(() => {
+    if (racks && racks.length > 0) {
+      setFormData(prev => {
+        const found = racks.find(r => r.id === prev.rackId);
+        if (found) {
+          return { ...prev, locationId: found.locationId || prev.locationId };
+        }
+        return {
+          ...prev,
+          rackId: racks[0].id,
+          locationId: racks[0].locationId || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
+        };
+      });
+    }
+  }, [racks]);
 
   const handleCategorySwitch = (cat: 'ACTIVE' | 'PASSIVE') => {
     setEquipmentCategory(cat);
@@ -95,9 +115,16 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     e.preventDefault();
     setLoading(true);
     setErrorMessage(null);
+
     try {
+      const effectiveSerial = formData.serialNumber.trim() || `FOC${Math.floor(10000000 + Math.random() * 90000000)}`;
+      const matchedRack = racks.find(r => r.id === formData.rackId);
+      const effectiveLocationId = matchedRack?.locationId || formData.locationId || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
       await inventoryApi.createDevice({
         ...formData,
+        locationId: effectiveLocationId,
+        serialNumber: effectiveSerial,
         managementIp: equipmentCategory === 'PASSIVE' ? undefined : formData.managementIp,
         rackUnitStart: equipmentCategory === 'PASSIVE' && !formData.rackUnitStart ? 0 : Number(formData.rackUnitStart),
         rackUnitHeight: Number(formData.rackUnitHeight),
@@ -106,8 +133,9 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       });
       onSuccess();
     } catch (err: any) {
-      console.error(err);
-      setErrorMessage(err.response?.data?.message || err.message || 'Failed to register device. Check inputs or console logs.');
+      console.error('Device creation error:', err);
+      const backendMsg = err.response?.data?.message || err.response?.data?.title || (typeof err.response?.data === 'string' ? err.response.data : null);
+      setErrorMessage(backendMsg || err.message || 'Failed to register device. Check inputs or console logs.');
     } finally {
       setLoading(false);
     }
@@ -323,7 +351,15 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
             </label>
             <select
               value={formData.rackId}
-              onChange={(e) => setFormData({ ...formData, rackId: e.target.value })}
+              onChange={(e) => {
+                const targetRackId = e.target.value;
+                const matchedRack = racks.find((r) => r.id === targetRackId);
+                setFormData((prev) => ({
+                  ...prev,
+                  rackId: targetRackId,
+                  locationId: matchedRack?.locationId || prev.locationId,
+                }));
+              }}
               className="glass-input w-full h-10 px-3.5 text-xs rounded-xl font-mono text-cyan-300"
             >
               {racks.length > 0 ? (
