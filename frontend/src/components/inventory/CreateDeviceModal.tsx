@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { inventoryApi } from '../../api/inventoryApi';
-import { DeviceType, DeviceTypeOption, Rack } from '../../types/inventory';
-import { Server, Save, Loader2, ShieldAlert } from 'lucide-react';
+import { DeviceType, DeviceTypeOption, Rack, NetworkDevice } from '../../types/inventory';
+import { Server, Save, Loader2, ShieldAlert, AlertTriangle } from 'lucide-react';
 
 interface CreateDeviceModalProps {
   isOpen?: boolean;
@@ -109,12 +109,67 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     }
   }, [initialUnit]);
 
+  const [existingDevices, setExistingDevices] = useState<NetworkDevice[]>([]);
+
+  useEffect(() => {
+    const loadExistingDevices = async () => {
+      try {
+        const res = await inventoryApi.getDevices({ size: 100 });
+        if (res && res.items) {
+          setExistingDevices(res.items);
+        }
+      } catch (err) {
+        console.warn('Could not pre-load devices for conflict check', err);
+      }
+    };
+    loadExistingDevices();
+  }, []);
+
+  // Real-time Duplicate Management IP check
+  const duplicateIpDevice = equipmentCategory === 'ACTIVE' && formData.managementIp?.trim()
+    ? existingDevices.find(d =>
+        d.managementIp &&
+        d.managementIp.trim().toLowerCase() === formData.managementIp.trim().toLowerCase()
+      )
+    : undefined;
+
+  // Real-time Rack Unit Overlap check
+  const rackOverlapDevice = formData.rackId && formData.rackUnitStart > 0
+    ? existingDevices.find(d => {
+        if (d.rackId !== formData.rackId) return false;
+        if (d.rackUnitStart === null || d.rackUnitStart === undefined || d.rackUnitStart === 0) return false;
+        const existStart = d.rackUnitStart;
+        const existHeight = (d.rackUnitHeight && d.rackUnitHeight > 0) ? d.rackUnitHeight : 1;
+        const existEnd = existStart + existHeight - 1;
+
+        const reqStart = Number(formData.rackUnitStart);
+        const reqHeight = (Number(formData.rackUnitHeight) > 0) ? Number(formData.rackUnitHeight) : 1;
+        const reqEnd = reqStart + reqHeight - 1;
+
+        return reqStart <= existEnd && reqEnd >= existStart;
+      })
+    : undefined;
+
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMessage(null);
+
+    if (duplicateIpDevice) {
+      setErrorMessage(`Management IP conflict: IP '${formData.managementIp}' is already assigned to '${duplicateIpDevice.hostname}'. Each active device must have a unique management IP.`);
+      setLoading(false);
+      return;
+    }
+
+    if (rackOverlapDevice && rackOverlapDevice.rackUnitStart !== undefined && rackOverlapDevice.rackUnitStart !== null) {
+      const existStart = rackOverlapDevice.rackUnitStart;
+      const existEnd = existStart + (rackOverlapDevice.rackUnitHeight || 1) - 1;
+      setErrorMessage(`Rack unit conflict: Target units overlap with '${rackOverlapDevice.hostname}' (occupying U${existStart}${existEnd > existStart ? `-U${existEnd}` : ''}). Please assign an unoccupied slot.`);
+      setLoading(false);
+      return;
+    }
 
     try {
       const effectiveSerial = formData.serialNumber.trim() || `FOC${Math.floor(10000000 + Math.random() * 90000000)}`;
@@ -134,7 +189,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       onSuccess();
     } catch (err: any) {
       console.error('Device creation error:', err);
-      const backendMsg = err.response?.data?.message || err.response?.data?.title || (typeof err.response?.data === 'string' ? err.response.data : null);
+      const backendMsg = err.response?.data?.detail || err.response?.data?.message || err.response?.data?.title || (typeof err.response?.data === 'string' ? err.response.data : null);
       setErrorMessage(backendMsg || err.message || 'Failed to register device. Check inputs or console logs.');
     } finally {
       setLoading(false);
@@ -284,8 +339,16 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                 placeholder="10.240.10.x"
                 value={formData.managementIp}
                 onChange={(e) => setFormData({ ...formData, managementIp: e.target.value })}
-                className="glass-input w-full h-10 px-3.5 text-xs rounded-xl font-mono text-cyan-300"
+                className={`glass-input w-full h-10 px-3.5 text-xs rounded-xl font-mono ${
+                  duplicateIpDevice ? 'border-rose-500/80 text-rose-300 focus:border-rose-500 ring-1 ring-rose-500/30' : 'text-cyan-300'
+                }`}
               />
+              {duplicateIpDevice && (
+                <p className="mt-1 text-[11px] text-rose-400 flex items-center gap-1 font-mono">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Conflict: IP already assigned to {duplicateIpDevice.hostname}</span>
+                </p>
+              )}
             </div>
           ) : (
             <div>
@@ -327,8 +390,16 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
               required
               value={formData.rackUnitStart}
               onChange={(e) => setFormData({ ...formData, rackUnitStart: parseInt(e.target.value) || 0 })}
-              className="glass-input w-full h-10 px-3.5 text-xs rounded-xl font-bold text-cyan-300 font-mono"
+              className={`glass-input w-full h-10 px-3.5 text-xs rounded-xl font-bold font-mono ${
+                rackOverlapDevice ? 'border-rose-500/80 text-rose-300 focus:border-rose-500 ring-1 ring-rose-500/30' : 'text-cyan-300'
+              }`}
             />
+            {rackOverlapDevice && rackOverlapDevice.rackUnitStart !== undefined && (
+              <p className="mt-1 text-[11px] text-rose-400 flex items-center gap-1 font-mono">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>Collision: Slot overlaps with {rackOverlapDevice.hostname} (U{rackOverlapDevice.rackUnitStart}{rackOverlapDevice.rackUnitHeight && rackOverlapDevice.rackUnitHeight > 1 ? `-U${rackOverlapDevice.rackUnitStart + rackOverlapDevice.rackUnitHeight - 1}` : ''})</span>
+              </p>
+            )}
           </div>
 
           <div>
@@ -398,8 +469,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
           </button>
           <button
             type="submit"
-            disabled={loading}
-            className={`flex items-center gap-1.5 px-5 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-60 ${
+            disabled={loading || Boolean(duplicateIpDevice || rackOverlapDevice)}
+            className={`flex items-center gap-1.5 px-5 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${
               equipmentCategory === 'PASSIVE'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-600/30'
                 : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-600/30'

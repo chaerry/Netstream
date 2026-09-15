@@ -48,6 +48,9 @@ public class DeviceDTOs {
             String managementIp,
 
             @PositiveOrZero
+            Integer totalPorts,
+
+            @PositiveOrZero
             BigDecimal costUsd
     ) {}
 
@@ -69,6 +72,8 @@ public class DeviceDTOs {
             String assetTag,
             String firmwareVersion,
             String hardwareVersion,
+            @PositiveOrZero
+            Integer totalPorts,
             @PositiveOrZero
             BigDecimal costUsd
     ) {}

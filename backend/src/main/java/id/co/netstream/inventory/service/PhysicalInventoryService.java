@@ -2,9 +2,11 @@ package id.co.netstream.inventory.service;
 
 import id.co.netstream.inventory.domain.entity.DevicePortEntity;
 import id.co.netstream.inventory.domain.entity.NetworkDeviceEntity;
+import id.co.netstream.inventory.domain.entity.RackEntity;
 import id.co.netstream.inventory.domain.entity.NetworkServiceEntity;
 import id.co.netstream.inventory.domain.entity.ServiceResourceMappingEntity;
 import id.co.netstream.inventory.domain.enums.OperationalStatus;
+import id.co.netstream.inventory.domain.enums.PortMedium;
 import id.co.netstream.inventory.dto.CommonDTOs.PagedResponse;
 import id.co.netstream.inventory.dto.DeviceDTOs.*;
 import id.co.netstream.inventory.exception.DuplicateEntityException;
@@ -89,6 +91,14 @@ public class PhysicalInventoryService {
             throw new DuplicateEntityException("Device with serial number '" + req.serialNumber() + "' already exists.");
         }
 
+        // 1. Management IP Uniqueness Validation
+        validateManagementIpUniqueness(req.managementIp(), null);
+
+        // 2. Rack Unit Overlap & Boundary Validation
+        if (req.rackId() != null && req.rackUnitStart() != null) {
+            validateRackPlacement(req.rackId(), req.rackUnitStart(), req.rackUnitHeight(), null);
+        }
+
         locationRepository.findByIdOptional(req.locationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Location not found with ID: " + req.locationId()));
 
@@ -109,12 +119,21 @@ public class PhysicalInventoryService {
         entity.rackUnitStart = req.rackUnitStart();
         entity.rackUnitHeight = req.rackUnitHeight() != null ? req.rackUnitHeight() : 1;
         entity.status = OperationalStatus.PLANNED;
-        entity.managementIp = req.managementIp();
+        entity.managementIp = (req.managementIp() != null && !req.managementIp().trim().isEmpty()) ? req.managementIp().trim() : null;
         entity.costUsd = req.costUsd() != null ? req.costUsd() : BigDecimal.ZERO;
+        
+        int portCount = (req.totalPorts() != null && req.totalPorts() > 0) ? req.totalPorts() : 0;
+        entity.totalPorts = portCount;
         entity.createdBy = username;
         entity.updatedBy = username;
 
         deviceRepository.persist(entity);
+
+        // Auto-generate physical / optical ports if port count specified
+        if (portCount > 0) {
+            generateDefaultPorts(entity, portCount);
+        }
+
         return mapToDto(entity);
     }
 
@@ -184,9 +203,22 @@ public class PhysicalInventoryService {
         LOG.infof("User %s updating device %s (IP=%s, Rack=%s, UStart=%s, Status=%s)",
                 username, entity.hostname, req.managementIp(), req.rackId(), req.rackUnitStart(), req.status());
 
+        // 1. Management IP Uniqueness Validation on Update
+        if (req.managementIp() != null) {
+            validateManagementIpUniqueness(req.managementIp(), id);
+            entity.managementIp = !req.managementIp().trim().isEmpty() ? req.managementIp().trim() : null;
+        }
+
+        // 2. Rack Placement & Overlap Validation on Update
+        UUID targetRackId = req.rackId() != null ? req.rackId() : entity.rackId;
+        Integer targetUnitStart = req.rackUnitStart() != null ? req.rackUnitStart() : entity.rackUnitStart;
+        Integer targetHeight = req.rackUnitHeight() != null ? req.rackUnitHeight() : entity.rackUnitHeight;
+
+        if (targetRackId != null && targetUnitStart != null) {
+            validateRackPlacement(targetRackId, targetUnitStart, targetHeight, id);
+        }
+
         if (req.rackId() != null) {
-            rackRepository.findByIdOptional(req.rackId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Rack not found with ID: " + req.rackId()));
             entity.rackId = req.rackId();
         }
         if (req.rackUnitStart() != null) {
@@ -194,9 +226,6 @@ public class PhysicalInventoryService {
         }
         if (req.rackUnitHeight() != null) {
             entity.rackUnitHeight = req.rackUnitHeight();
-        }
-        if (req.managementIp() != null) {
-            entity.managementIp = req.managementIp().trim();
         }
         if (req.status() != null) {
             entity.status = req.status();
@@ -210,12 +239,123 @@ public class PhysicalInventoryService {
         if (req.hardwareVersion() != null) {
             entity.hardwareVersion = req.hardwareVersion().trim();
         }
+        if (req.totalPorts() != null && req.totalPorts() > 0) {
+            entity.totalPorts = req.totalPorts();
+            if (entity.ports == null || entity.ports.isEmpty()) {
+                generateDefaultPorts(entity, req.totalPorts());
+            }
+        }
         if (req.costUsd() != null) {
             entity.costUsd = req.costUsd();
         }
         entity.updatedBy = username;
 
         return mapToDto(entity);
+    }
+
+    private void validateManagementIpUniqueness(String ip, UUID excludeDeviceId) {
+        if (ip == null || ip.trim().isEmpty() || ip.trim().equalsIgnoreCase("N/A") || ip.trim().equals("-")) {
+            return;
+        }
+        String cleanIp = ip.trim();
+        var existing = excludeDeviceId != null
+                ? deviceRepository.find("managementIp = ?1 and id != ?2", cleanIp, excludeDeviceId).firstResultOptional()
+                : deviceRepository.find("managementIp", cleanIp).firstResultOptional();
+
+        if (existing.isPresent()) {
+            NetworkDeviceEntity conflict = existing.get();
+            throw new DuplicateEntityException(String.format(
+                    "Management IP conflict: IP '%s' is already assigned to device '%s' (Serial: %s, ID: %s). Each active device must have a unique management IP.",
+                    cleanIp, conflict.hostname, conflict.serialNumber, conflict.id
+            ));
+        }
+    }
+
+    private void validateRackPlacement(UUID rackId, Integer rackUnitStart, Integer rackUnitHeight, UUID excludeDeviceId) {
+        RackEntity rack = rackRepository.findByIdOptional(rackId)
+                .orElseThrow(() -> new ResourceNotFoundException("Target rack not found with ID: " + rackId));
+
+        int start = rackUnitStart;
+        int height = (rackUnitHeight != null && rackUnitHeight > 0) ? rackUnitHeight : 1;
+        int end = start + height - 1;
+        int maxUnits = (rack.heightUnits != null && rack.heightUnits > 0) ? rack.heightUnits : 42;
+
+        if (start < 1 || end > maxUnits) {
+            throw new DuplicateEntityException(String.format(
+                    "Invalid rack slot: Target range U%d-U%d exceeds rack capacity (Rack '%s' has %dU units max).",
+                    start, end, rack.rackNumber, maxUnits
+            ));
+        }
+
+        List<NetworkDeviceEntity> installedDevices = deviceRepository.find("rackId", rackId).list();
+        for (NetworkDeviceEntity existing : installedDevices) {
+            if (excludeDeviceId != null && existing.id.equals(excludeDeviceId)) {
+                continue;
+            }
+            if (existing.rackUnitStart != null) {
+                int existStart = existing.rackUnitStart;
+                int existHeight = (existing.rackUnitHeight != null && existing.rackUnitHeight > 0) ? existing.rackUnitHeight : 1;
+                int existEnd = existStart + existHeight - 1;
+
+                if (start <= existEnd && end >= existStart) {
+                    throw new DuplicateEntityException(String.format(
+                            "Rack unit conflict: Rack '%s' already has device '%s' occupying unit%s U%d%s. Requested slot U%d%s overlaps.",
+                            rack.rackNumber,
+                            existing.hostname,
+                            existHeight > 1 ? "s" : "",
+                            existStart,
+                            existHeight > 1 ? ("-U" + existEnd) : "",
+                            start,
+                            height > 1 ? ("-U" + end) : ""
+                    ));
+                }
+            }
+        }
+    }
+
+    private void generateDefaultPorts(NetworkDeviceEntity device, int count) {
+        String type = device.deviceType != null ? device.deviceType.toUpperCase() : "ROUTER";
+        for (int i = 1; i <= count; i++) {
+            DevicePortEntity port = new DevicePortEntity();
+            port.device = device;
+            port.isOperational = true;
+            port.isAllocated = false;
+
+            if (type.contains("ODF") || type.contains("ODC") || type.contains("PATCH")) {
+                port.portName = String.format("Port-%02d", i);
+                port.portSpeedMbps = 10000;
+                port.mediumType = PortMedium.FIBER_SINGLE_MODE;
+                port.connectorType = "SC/APC";
+            } else if (type.contains("ROUTER") || type.contains("CORE")) {
+                if (i <= 4) {
+                    port.portName = String.format("HundredGigE0/0/0/%d", i - 1);
+                    port.portSpeedMbps = 100000;
+                } else if (i <= 12) {
+                    port.portName = String.format("TenGigE0/0/1/%d", i - 5);
+                    port.portSpeedMbps = 10000;
+                } else {
+                    port.portName = String.format("GigabitEthernet0/0/2/%d", i - 13);
+                    port.portSpeedMbps = 1000;
+                }
+                port.mediumType = PortMedium.FIBER_SINGLE_MODE;
+                port.connectorType = "LC/UPC";
+            } else { // SWITCH, METRO, OLT, etc.
+                if (i <= 8) {
+                    port.portName = String.format("TenGigE0/1/%d", i);
+                    port.portSpeedMbps = 10000;
+                    port.mediumType = PortMedium.FIBER_SINGLE_MODE;
+                    port.connectorType = "LC/UPC";
+                } else {
+                    port.portName = String.format("GigabitEthernet0/2/%d", i - 8);
+                    port.portSpeedMbps = 1000;
+                    port.mediumType = PortMedium.COPPER_RJ45;
+                    port.connectorType = "RJ45";
+                }
+            }
+
+            portRepository.persist(port);
+            device.ports.add(port);
+        }
     }
 
     @Transactional
