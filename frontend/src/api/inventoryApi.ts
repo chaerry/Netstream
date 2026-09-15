@@ -411,7 +411,11 @@ export const inventoryApi = {
     try {
       const response = await apiClient.post('/api/v1/inventory/services', data);
       return response.data;
-    } catch {
+    } catch (err: any) {
+      if (err.response) {
+        throw err;
+      }
+      console.info('[inventoryApi] Backend unreachable, creating service in local sandbox dataset');
       const newSvc: NetworkService = {
         id: `svc-${Date.now()}`,
         serviceCode: data.serviceCode || `SVC-VPN-${Date.now()}`,

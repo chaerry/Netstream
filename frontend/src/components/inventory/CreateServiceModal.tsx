@@ -22,13 +22,15 @@ export const CreateServiceModal: React.FC<CreateServiceModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    serviceCode: 'SVC-VPN-2026-0105',
+    serviceCode: 'SVC-ME-2026-0252',
     customerName: CUSTOMER_REFERENCES[0].name,
-    serviceType: 'L3_VPN_MPLS' as ServiceType,
+    serviceType: 'METRO_ETHERNET' as ServiceType,
     bandwidthMbps: 10000,
-    slaTier: 'GOLD',
+    slaTier: 'PLATINUM',
     slaAvailabilityPct: 99.95,
     monthlyRecurringCost: 12500,
+    aEndLocationId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', // Jakarta Mega Pop Hub
+    zEndLocationId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380b11', // Bandung Transit Hub
   });
 
   const [loading, setLoading] = useState<boolean>(false);
@@ -68,11 +70,23 @@ export const CreateServiceModal: React.FC<CreateServiceModalProps> = ({
     setLoading(true);
     setErrorMessage(null);
     try {
-      await inventoryApi.createService(formData);
+      await inventoryApi.createService({
+        ...formData,
+        serviceCode: formData.serviceCode.trim().toUpperCase(),
+        customerName: formData.customerName.trim(),
+        bandwidthMbps: Number(formData.bandwidthMbps),
+        slaAvailabilityPct: Number(formData.slaAvailabilityPct),
+        monthlyRecurringCost: Number(formData.monthlyRecurringCost),
+      });
       onSuccess();
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || err.message || 'Error provisioning service');
+      console.error('Service provisioning error:', err);
+      const backendMsg = err.response?.data?.detail 
+        || err.response?.data?.message 
+        || err.response?.data?.title 
+        || (err.response?.data?.violations ? err.response.data.violations.map((v: any) => `${v.field}: ${v.message}`).join(', ') : null);
+      setErrorMessage(backendMsg || err.message || 'Error provisioning service. Check parameters or server logs.');
     } finally {
       setLoading(false);
     }
@@ -195,6 +209,43 @@ export const CreateServiceModal: React.FC<CreateServiceModalProps> = ({
               onChange={(e) => setFormData({ ...formData, bandwidthMbps: Number(e.target.value) })}
               className="glass-input w-full h-10 px-3.5 text-xs rounded-xl font-mono"
             />
+          </div>
+        </div>
+
+        {/* Row 2.5: A-End & Z-End Site Demarcation */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 whitespace-nowrap">
+              A-End Origin PoP / Core Site *
+            </label>
+            <select
+              value={formData.aEndLocationId}
+              onChange={(e) => setFormData({ ...formData, aEndLocationId: e.target.value })}
+              className="glass-input w-full h-10 px-3.5 text-xs rounded-xl text-cyan-300 font-mono"
+            >
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11">Jakarta Mega Pop Hub (ID-CGK)</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380b11">Bandung Transit Hub (ID-BDG)</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44">Surabaya Metro Gateway (ID-SUB)</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380c11">Medan Regional Hub (ID-MDN)</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380d11">Semarang Transit Hub (ID-SMG)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 whitespace-nowrap">
+              Z-End Termination Site / Enterprise Hub *
+            </label>
+            <select
+              value={formData.zEndLocationId}
+              onChange={(e) => setFormData({ ...formData, zEndLocationId: e.target.value })}
+              className="glass-input w-full h-10 px-3.5 text-xs rounded-xl text-cyan-300 font-mono"
+            >
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380b11">Bandung Transit Hub (ID-BDG)</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11">Jakarta Mega Pop Hub (ID-CGK)</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44">Surabaya Metro Gateway (ID-SUB)</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380c11">Medan Regional Hub (ID-MDN)</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380d11">Semarang Transit Hub (ID-SMG)</option>
+            </select>
           </div>
         </div>
 

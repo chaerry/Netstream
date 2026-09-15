@@ -33,10 +33,7 @@ public class ServiceDTOs {
             BigDecimal slaAvailabilityPct,
             BigDecimal monthlyRecurringCost,
 
-            @NotNull(message = "A-End Location ID is mandatory")
             UUID aEndLocationId,
-
-            @NotNull(message = "Z-End Location ID is mandatory")
             UUID zEndLocationId,
 
             List<CreateResourceMappingRequest> mappings

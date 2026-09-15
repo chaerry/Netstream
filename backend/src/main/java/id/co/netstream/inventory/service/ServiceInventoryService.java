@@ -65,10 +65,17 @@ public class ServiceInventoryService {
             throw new DuplicateEntityException("Service with code '" + req.serviceCode() + "' already exists.");
         }
 
-        locationRepository.findByIdOptional(req.aEndLocationId())
-                .orElseThrow(() -> new ResourceNotFoundException("A-End Location not found with ID: " + req.aEndLocationId()));
-        locationRepository.findByIdOptional(req.zEndLocationId())
-                .orElseThrow(() -> new ResourceNotFoundException("Z-End Location not found with ID: " + req.zEndLocationId()));
+        UUID aEndId = req.aEndLocationId() != null
+                ? req.aEndLocationId()
+                : UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"); // Jakarta Mega Pop Hub
+        UUID zEndId = req.zEndLocationId() != null
+                ? req.zEndLocationId()
+                : UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380b11"); // Bandung Transit Hub
+
+        locationRepository.findByIdOptional(aEndId)
+                .orElseThrow(() -> new ResourceNotFoundException("A-End Location not found with ID: " + aEndId));
+        locationRepository.findByIdOptional(zEndId)
+                .orElseThrow(() -> new ResourceNotFoundException("Z-End Location not found with ID: " + zEndId));
 
         NetworkServiceEntity service = new NetworkServiceEntity();
         service.serviceCode = req.serviceCode().trim().toUpperCase();
@@ -78,16 +85,16 @@ public class ServiceInventoryService {
         service.slaTier = req.slaTier() != null ? req.slaTier() : "STANDARD";
         service.slaAvailabilityPct = req.slaAvailabilityPct() != null ? req.slaAvailabilityPct() : new BigDecimal("99.90");
         service.monthlyRecurringCost = req.monthlyRecurringCost() != null ? req.monthlyRecurringCost() : BigDecimal.ZERO;
-        service.status = ServiceStatus.PROVISIONING;
-        service.aEndLocationId = req.aEndLocationId();
-        service.zEndLocationId = req.zEndLocationId();
+        service.status = ServiceStatus.ACTIVE;
+        service.aEndLocationId = aEndId;
+        service.zEndLocationId = zEndId;
         service.activationDate = OffsetDateTime.now();
         service.createdBy = username;
         service.updatedBy = username;
 
         serviceRepository.persist(service);
 
-        if (req.mappings() != null) {
+        if (req.mappings() != null && !req.mappings().isEmpty()) {
             for (CreateResourceMappingRequest m : req.mappings()) {
                 ServiceResourceMappingEntity mapping = new ServiceResourceMappingEntity();
                 mapping.service = service;
@@ -99,6 +106,8 @@ public class ServiceInventoryService {
                 mapping.allocatedBandwidthMbps = m.allocatedBandwidthMbps();
                 mappingRepository.persist(mapping);
             }
+        } else {
+            generateDefaultHops(service);
         }
 
         return mapToDto(service);
@@ -173,6 +182,61 @@ public class ServiceInventoryService {
                 s.createdBy,
                 s.updatedBy
         );
+    }
+
+    private void generateDefaultHops(NetworkServiceEntity service) {
+        var aDevice = deviceRepository.find("locationId", service.aEndLocationId).firstResultOptional()
+                .or(() -> deviceRepository.find("deviceType in ('ROUTER', 'SWITCH', 'METRO')").firstResultOptional());
+        var zDevice = deviceRepository.find("locationId", service.zEndLocationId).firstResultOptional()
+                .or(() -> deviceRepository.find("deviceType in ('ROUTER', 'SWITCH', 'METRO')").firstResultOptional());
+
+        int order = 1;
+        if (aDevice.isPresent()) {
+            ServiceResourceMappingEntity m1 = new ServiceResourceMappingEntity();
+            m1.service = service;
+            m1.deviceId = aDevice.get().id;
+            m1.device = aDevice.get();
+            if (aDevice.get().ports != null && !aDevice.get().ports.isEmpty()) {
+                m1.portId = aDevice.get().ports.get(0).id;
+                m1.port = aDevice.get().ports.get(0);
+            }
+            m1.resourceRole = "ORIGIN_ACCESS_NODE";
+            m1.hopOrder = order++;
+            m1.allocatedBandwidthMbps = service.bandwidthMbps;
+            mappingRepository.persist(m1);
+        }
+
+        var transportDevice = deviceRepository.find("deviceType in ('DWDM_CHASSIS', 'ROUTER', 'CORE')").firstResultOptional();
+        if (transportDevice.isPresent() && (aDevice.isEmpty() || !transportDevice.get().id.equals(aDevice.get().id))) {
+            ServiceResourceMappingEntity m2 = new ServiceResourceMappingEntity();
+            m2.service = service;
+            m2.deviceId = transportDevice.get().id;
+            m2.device = transportDevice.get();
+            if (transportDevice.get().ports != null && !transportDevice.get().ports.isEmpty()) {
+                m2.portId = transportDevice.get().ports.get(0).id;
+                m2.port = transportDevice.get().ports.get(0);
+            }
+            m2.resourceRole = "CORE_OPTICAL_TRANSPORT";
+            m2.hopOrder = order++;
+            m2.allocatedBandwidthMbps = service.bandwidthMbps;
+            mappingRepository.persist(m2);
+        }
+
+        if (zDevice.isPresent()) {
+            ServiceResourceMappingEntity m3 = new ServiceResourceMappingEntity();
+            m3.service = service;
+            m3.deviceId = zDevice.get().id;
+            m3.device = zDevice.get();
+            if (zDevice.get().ports != null && !zDevice.get().ports.isEmpty()) {
+                int lastIdx = zDevice.get().ports.size() - 1;
+                m3.portId = zDevice.get().ports.get(lastIdx).id;
+                m3.port = zDevice.get().ports.get(lastIdx);
+            }
+            m3.resourceRole = "TERMINATION_ACCESS_NODE";
+            m3.hopOrder = order++;
+            m3.allocatedBandwidthMbps = service.bandwidthMbps;
+            mappingRepository.persist(m3);
+        }
     }
 
     private String getUsername() {
