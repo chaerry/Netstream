@@ -179,9 +179,68 @@ curl -X POST http://localhost:8070/api/inventory/services \
 Carrier Ethernet Point-to-Point (EVPL) requires establishing 3 key constructs in the inventory database:
 
 ### 3.1 Logical 802.1Q Ports (Sub-interfaces)
-Customer traffic arrives on physical 10Gbps ports (`TenGigE0/0/0`) with an 802.1Q encapsulation tag (`VLAN 253`). In Netstream, physical and logical sub-interfaces are managed in `inventory.inv_device_ports`.
+Customer traffic arrives on physical 10Gbps ports (`TenGigE0/0/0`) with an 802.1Q encapsulation tag (`VLAN 253`). In Netstream, physical and logical sub-interfaces can be assigned through the **Frontend Web GUI**, via the **REST API**, or via database queries.
 
-#### Registering the Logical Ports via SQL:
+#### Method 1: Frontend GUI Steps (No Database Access Needed)
+Operators can allocate physical ports to customer circuits and define logical 802.1Q VLAN sub-interfaces directly from the browser:
+
+1. **Open Physical Inventory:**
+   - Go to `http://localhost:3000/inventory` and click the **"Physical"** tab (`PhysicalInventoryView`).
+2. **Inspect Ports on A-End Node (`ID-CGK-METRO-AGG-01`):**
+   - Search or locate device card **`ID-CGK-METRO-AGG-01`** (Cisco NCS 540 in Jakarta Mega Pop Hub).
+   - Click the **"Ports"** badge/button on the card to open the **`PortInspectorModal`**.
+   - Locate port **`TenGigE0/0/0`** (10,000 Mbps).
+   - Click the **"Allocate to Circuit"** button (⚡ Zap icon) next to `TenGigE0/0/0`.
+3. **Configure the Logical Port in `AllocatePortModal`:**
+   - **Active Circuit / Service:** Select `SVC-ME-2026-0253 - PT Bank Rakyat Indonesia (BRI) Tbk`.
+   - **Resource Role:** Select or type `METRO_ACCESS_A_END`.
+   - **VLAN ID (802.1Q Dot1Q):** Enter `253`.
+     *(The system automatically creates and tags the logical port as `TenGigE0/0/0.253 (VLAN 253 Dot1Q)`).*
+   - **Committed Bandwidth:** `10000` Mbps.
+   - **Hop Order:** `1`.
+   - Click **"Allocate Port to Circuit"**.
+4. **Repeat for Z-End Demarcation Node (`ID-SUB-METRO-AGG-01`):**
+   - Locate device **`ID-SUB-METRO-AGG-01`** (Juniper ACX5448 in Surabaya Metro Gateway).
+   - Open its **"Ports"** inspector, locate `TenGigE0/0/0`, and click **"Allocate to Circuit"**.
+   - Service: `SVC-ME-2026-0253`, Role: `METRO_ACCESS_Z_END`, VLAN ID: `253`, Hop Order: `5`.
+   - Click **"Allocate Port to Circuit"**.
+5. **Configure PE Core Sub-Interfaces & VCID Binding:**
+   - On **`ID-CGK-PE-RTR-01`** (Jakarta PE): Allocate port `TenGigE0/0/1/0` to Hop 2, VLAN: `253`, VCID: `100253`, Role: `PE_ROUTER_ORIGIN_VCID`.
+   - On **`ID-SUB-PE-RTR-01`** (Surabaya PE): Allocate port `TenGigE0/0/1/0` to Hop 4, VLAN: `253`, VCID: `100253`, Role: `PE_ROUTER_TERMINATION_VCID`.
+
+---
+
+#### Method 2: REST API / cURL (Command Line or Postman)
+
+##### A. Create a Logical Sub-Interface Port on a Device
+```bash
+# Add sub-interface TenGigE0/0/0.253 to ID-CGK-METRO-AGG-01
+curl -X POST http://localhost:8070/api/v1/inventory/devices/c3eebc99-9c0b-4ef8-bb6d-6bb9bd380301/ports \
+  -H "Content-Type: application/json" \
+  -d '{
+    "portName": "TenGigE0/0/0.253 (VLAN 253 Dot1Q)",
+    "portSpeedMbps": 10000,
+    "mediumType": "FIBER_SINGLE_MODE",
+    "connectorType": "LC/UPC"
+  }'
+```
+
+##### B. Allocate Port to Active Customer Service
+```bash
+# Allocate the port to SVC-ME-2026-0253 as Hop #1
+curl -X POST http://localhost:8070/api/v1/inventory/devices/ports/d0eebc99-9c0b-4ef8-bb6d-6bb9bd380e53/allocate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "serviceId": "<SERVICE_UUID_FROM_STEP_1>",
+    "resourceRole": "METRO_ACCESS_A_END",
+    "allocatedBandwidthMbps": 10000,
+    "hopOrder": 1
+  }'
+```
+
+---
+
+#### Method 3: Direct Database SQL (For Database Administrators)
 ```sql
 -- 1. A-End Demarcation Port on ID-CGK-METRO-AGG-01
 INSERT INTO inventory.inv_device_ports (
@@ -243,9 +302,68 @@ INSERT INTO inventory.inv_device_ports (
 ---
 
 ### 3.2 Virtual Network Element (VNE) for VCID: 100253
-The Layer 2 circuit is encapsulated over the MPLS core between `ID-CGK-PE-RTR-01` and `ID-SUB-PE-RTR-01` using an **EoMPLS (Ethernet over MPLS) Pseudowire**. In Netstream, this is registered under `inv_virtual_network_elements`.
+The Layer 2 circuit is encapsulated over the MPLS core between `ID-CGK-PE-RTR-01` and `ID-SUB-PE-RTR-01` using an **EoMPLS (Ethernet over MPLS) Pseudowire**. In Netstream, this is modeled as a Virtual Network Element (VNE) instance.
 
-#### Registering the VCID Pseudowire via SQL:
+#### Method 1: Frontend GUI Steps (No Database Access Needed)
+Operators can deploy and register the VCID Pseudowire instance via the GUI:
+
+1. **Open Logical & Virtual Inventory:**
+   - Go to `http://localhost:3000/inventory` and click the **"Logical & Virtual"** tab (`LogicalInventoryView`).
+2. **Click "+ Deploy VNE":**
+   - Click the purple **"+ Deploy VNE"** button on the top right.
+   - The modal **"Provision Virtual Network Element (VNE)"** will open (`CreateVneModal`).
+3. **Fill in the VCID Pseudowire Parameters:**
+   - **VNE Instance Name:** `PW-EVPL-CGK-SUB-VCID100253`
+   - **VNF / Logical Circuit Flavor:** Select **`MPLS Pseudowire / L2Circuit (VCID)`** (`EoMPLS_PW_L2CIRCUIT`).
+   - **Assigned VLAN ID:** `253`
+   - **VRF Routing Domain / VCID Identifier:** `VCID: 100253`
+   - **vCPUs:** `4`
+   - **RAM (GB):** `8`
+   - **Storage (GB):** `40`
+4. **Deploy:**
+   - Click **"Deploy VNE"**.
+   - The VNE is instantly provisioned and appears as an active card in the Virtual Layer Inventory with status `ACTIVE`.
+
+---
+
+#### Method 2: REST API / cURL (Command Line or Postman)
+Deploy the Virtual Network Element instance using a standard HTTP request:
+
+```bash
+curl -X POST http://localhost:8070/api/v1/inventory/virtual \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hypervisorDeviceId": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01",
+    "vneName": "PW-EVPL-CGK-SUB-VCID100253",
+    "vnfType": "EoMPLS_PW_L2CIRCUIT",
+    "vlanId": 253,
+    "vrfName": "VCID: 100253",
+    "allocatedVcpu": 4,
+    "allocatedRamGb": 8,
+    "allocatedDiskGb": 40
+  }'
+```
+
+**Expected JSON Response:**
+```json
+{
+  "id": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a53",
+  "hypervisorDeviceId": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01",
+  "hypervisorHostname": "ID-CGK-PE-RTR-01",
+  "vneName": "PW-EVPL-CGK-SUB-VCID100253",
+  "vnfType": "EoMPLS_PW_L2CIRCUIT",
+  "vlanId": 253,
+  "vrfName": "VCID: 100253",
+  "allocatedVcpu": 4,
+  "allocatedRamGb": 8,
+  "allocatedDiskGb": 40,
+  "status": "ACTIVE"
+}
+```
+
+---
+
+#### Method 3: Direct Database SQL (For Database Administrators)
 ```sql
 INSERT INTO inventory.inv_virtual_network_elements (
     id,
