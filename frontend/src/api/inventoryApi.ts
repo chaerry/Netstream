@@ -245,6 +245,7 @@ export const inventoryApi = {
     connectedPortId?: string;
     portNameOverride?: string;
     vneNameOverride?: string;
+    createSubInterface?: boolean;
   }): Promise<DevicePort> => {
     try {
       const response = await apiClient.post(`/api/v1/inventory/devices/ports/${portId}/allocate`, data);

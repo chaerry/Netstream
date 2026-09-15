@@ -129,7 +129,13 @@ public class DeviceDTOs {
 
             Integer hopOrder,
 
-            UUID connectedPortId
+            UUID connectedPortId,
+
+            String portNameOverride,
+
+            String vneNameOverride,
+
+            Boolean createSubInterface
     ) {}
 
     public record PortResponse(

@@ -89,7 +89,14 @@ export const PortInspectorModal: React.FC<PortInspectorModalProps> = ({
   };
 
   const handleAllocateSuccess = (updatedPort: DevicePort) => {
-    setPorts(prev => prev.map(p => p.id === updatedPort.id ? updatedPort : p));
+    setPorts(prev => {
+      const exists = prev.some(p => p.id === updatedPort.id);
+      if (exists) {
+        return prev.map(p => p.id === updatedPort.id ? updatedPort : p);
+      } else {
+        return [updatedPort, ...prev];
+      }
+    });
     setAllocatingPort(null);
     if (onPortAdded) onPortAdded();
   };

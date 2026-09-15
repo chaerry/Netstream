@@ -43,6 +43,7 @@ export const AllocatePortModal: React.FC<AllocatePortModalProps> = ({
   const [hopOrder, setHopOrder] = useState<number>(1);
   const [vlanId, setVlanId] = useState<number | undefined>();
   const [vcid, setVcid] = useState<string>('');
+  const [createSubInterface, setCreateSubInterface] = useState<boolean>(false);
   
   // Optical Cable & Core Strand selection
   const [enableCableBinding, setEnableCableBinding] = useState<boolean>(false);
@@ -131,7 +132,8 @@ export const AllocatePortModal: React.FC<AllocatePortModalProps> = ({
     setError(null);
 
     try {
-      const portNameOverride = vlanId ? `${port.portName}.${vlanId} (VLAN ${vlanId} Dot1Q)` : undefined;
+      const basePortName = port.portName.split('.')[0].split(' ')[0];
+      const portNameOverride = vlanId ? `${basePortName}.${vlanId} (VLAN ${vlanId} Dot1Q)` : undefined;
       const vneNameOverride = vcid ? (vcid.startsWith('PW-') ? vcid : `PW-EVPL-${vcid}`) : undefined;
 
       let effectiveRole = resourceRole;
@@ -155,6 +157,7 @@ export const AllocatePortModal: React.FC<AllocatePortModalProps> = ({
         connectedPortId: enablePeerBinding && peerPortId ? peerPortId : undefined,
         portNameOverride,
         vneNameOverride,
+        createSubInterface,
       });
 
       onSuccess(updated);
@@ -532,8 +535,19 @@ export const AllocatePortModal: React.FC<AllocatePortModalProps> = ({
                     className="glass-input w-full h-8 px-2.5 text-xs rounded-lg font-mono text-cyan-300"
                   />
                   <span className="text-[9px] text-slate-400 block font-mono truncate">
-                    Port: <strong className="text-white">{vlanId ? `${port.portName}.${vlanId}` : port.portName}</strong>
+                    Port: <strong className="text-white">{vlanId ? `${port.portName.split('.')[0].split(' ')[0]}.${vlanId} (VLAN ${vlanId} Dot1Q)` : port.portName}</strong>
                   </span>
+                  {vlanId && (
+                    <label className="flex items-center gap-1.5 cursor-pointer text-[10px] text-cyan-300 font-sans pt-1">
+                      <input
+                        type="checkbox"
+                        checked={createSubInterface}
+                        onChange={(e) => setCreateSubInterface(e.target.checked)}
+                        className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500"
+                      />
+                      <span>Create as separate sub-interface port</span>
+                    </label>
+                  )}
                 </div>
 
                 <div className="space-y-1">

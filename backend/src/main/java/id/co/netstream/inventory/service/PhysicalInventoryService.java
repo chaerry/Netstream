@@ -19,6 +19,7 @@ import id.co.netstream.inventory.repository.NetworkServiceRepository;
 import id.co.netstream.inventory.repository.OpticalCableRepository;
 import id.co.netstream.inventory.repository.RackRepository;
 import id.co.netstream.inventory.repository.ServiceResourceMappingRepository;
+import id.co.netstream.inventory.repository.VirtualNetworkElementRepository;
 import io.quarkus.hibernate.orm.panache.PanacheQuery;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -59,6 +60,9 @@ public class PhysicalInventoryService {
 
     @Inject
     RackRepository rackRepository;
+
+    @Inject
+    VirtualNetworkElementRepository vneRepository;
 
     @Inject
     SecurityIdentity securityIdentity;
@@ -397,29 +401,64 @@ public class PhysicalInventoryService {
         NetworkServiceEntity service = serviceRepository.findByIdOptional(req.serviceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Circuit/Service not found with ID: " + req.serviceId()));
 
-        ServiceResourceMappingEntity mapping = mappingRepository.findByPortId(portId).orElseGet(ServiceResourceMappingEntity::new);
+        DevicePortEntity targetPort = port;
+
+        // If createSubInterface is requested and a portNameOverride is provided, create a separate logical sub-interface port
+        if (Boolean.TRUE.equals(req.createSubInterface()) && req.portNameOverride() != null && !req.portNameOverride().isBlank()) {
+            DevicePortEntity subPort = new DevicePortEntity();
+            subPort.device = port.device;
+            subPort.portName = req.portNameOverride().trim();
+            subPort.portSpeedMbps = req.allocatedBandwidthMbps() != null ? req.allocatedBandwidthMbps() : port.portSpeedMbps;
+            subPort.mediumType = port.mediumType;
+            subPort.connectorType = port.connectorType;
+            subPort.macAddress = port.macAddress;
+            subPort.isOperational = true;
+            subPort.isAllocated = true;
+            portRepository.persist(subPort);
+            targetPort = subPort;
+
+            if (port.device != null && port.device.totalPorts != null) {
+                port.device.totalPorts += 1;
+            }
+        } else if (req.portNameOverride() != null && !req.portNameOverride().isBlank()) {
+            // Update port name to reflect the logical sub-interface tag (e.g. TenGigE0/0/0.253 (VLAN 253 Dot1Q))
+            port.portName = req.portNameOverride().trim();
+            targetPort = port;
+        }
+
+        ServiceResourceMappingEntity mapping = mappingRepository.findByPortId(targetPort.id).orElseGet(ServiceResourceMappingEntity::new);
         mapping.service = service;
-        mapping.portId = port.id;
-        mapping.deviceId = port.device != null ? port.device.id : null;
+        mapping.portId = targetPort.id;
+        mapping.deviceId = targetPort.device != null ? targetPort.device.id : null;
         mapping.resourceRole = req.resourceRole() != null ? req.resourceRole().trim() : "ACCESS_PORT";
-        mapping.allocatedBandwidthMbps = req.allocatedBandwidthMbps() != null ? req.allocatedBandwidthMbps() : (port.portSpeedMbps != null ? port.portSpeedMbps : 1000);
+        mapping.allocatedBandwidthMbps = req.allocatedBandwidthMbps() != null ? req.allocatedBandwidthMbps() : (targetPort.portSpeedMbps != null ? targetPort.portSpeedMbps : 1000);
         mapping.hopOrder = req.hopOrder() != null ? req.hopOrder() : 1;
+
+        // Bind VCID / VNE if specified
+        if (req.vneNameOverride() != null && !req.vneNameOverride().isBlank()) {
+            String vneClean = req.vneNameOverride().trim();
+            var vneOpt = vneRepository.find("vneName = ?1 or vrfName like ?2", vneClean, "%" + vneClean + "%").firstResultOptional();
+            if (vneOpt.isPresent()) {
+                mapping.vne = vneOpt.get();
+                mapping.vneId = vneOpt.get().id;
+            }
+        }
 
         if (mapping.id == null) {
             mappingRepository.persist(mapping);
         }
 
         if (req.connectedPortId() != null) {
-            port.connectedPortId = req.connectedPortId();
+            targetPort.connectedPortId = req.connectedPortId();
             portRepository.findByIdOptional(req.connectedPortId()).ifPresent(peerPort -> {
-                peerPort.connectedPortId = port.id;
+                peerPort.connectedPortId = targetPort.id;
             });
         }
 
-        port.isAllocated = true;
-        LOG.infof("Port %s allocated to circuit %s (%s) at Hop #%d", port.portName, service.serviceCode, service.customerName, mapping.hopOrder);
+        targetPort.isAllocated = true;
+        LOG.infof("Port %s allocated to circuit %s (%s) at Hop #%d", targetPort.portName, service.serviceCode, service.customerName, mapping.hopOrder);
 
-        return mapToPortDto(port);
+        return mapToPortDto(targetPort);
     }
 
     @Transactional
@@ -432,7 +471,16 @@ public class PhysicalInventoryService {
             LOG.infof("Deleted circuit resource mapping for port %s", port.portName);
         });
 
+        // If port name was modified with VLAN sub-interface (e.g. TenGigE0/0/0.253 (VLAN 253 Dot1Q)), revert to base port name
+        if (port.portName != null && port.portName.contains("(VLAN")) {
+            String baseName = port.portName.replaceAll("\\.[0-9]+.*", "").trim();
+            if (!baseName.isBlank()) {
+                port.portName = baseName;
+            }
+        }
+
         port.isAllocated = false;
+        port.connectedPortId = null;
         return mapToPortDto(port);
     }
 
